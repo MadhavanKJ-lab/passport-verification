@@ -309,16 +309,16 @@ of it.
 
 ```powershell
 # Activate / invoke the env (PATH issue means direct python.exe calls can fail — use conda run)
-C:\Users\Madhavan\miniconda3\Scripts\conda.exe run -n trufor python <script> ...
+conda run -n trufor python <script> ...
 
 # Official inference script (output must be a FILENAME on Windows, not a directory — see bug #6 above)
 cd TruFor\TruFor_train_test
-C:\Users\Madhavan\miniconda3\Scripts\conda.exe run -n trufor python test.py `
+conda run -n trufor python test.py `
   -in "path\to\image.jpg" -out "path\to\output.npz" `
   -exp trufor_ph3 TEST.MODEL_FILE "pretrained_models/trufor.pth.tar"
 
 # Our wrapper (recommended — handles paths correctly, writes images + JSON)
-C:\Users\Madhavan\miniconda3\Scripts\conda.exe run -n trufor python passport_trufor.py `
+conda run -n trufor python passport_trufor.py `
   --image "path\to\image.jpg" --output results
 
 # Force CPU (use if you hit CUDA OOM on the 4GB RTX 3050 Ti)
