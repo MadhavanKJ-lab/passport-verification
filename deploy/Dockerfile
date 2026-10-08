@@ -74,6 +74,30 @@ COPY TruFor/TruFor_train_test/ /app/TruFor/TruFor_train_test/
 COPY BFree/ /app/BFree/
 COPY deploy/api.py /app/api.py
 
+# Weights are not stored in git. If they were not copied from a local checkout, fetch
+# them from the upstream authors (GRIP, Univ. of Naples) so the image also builds
+# straight from the GitHub repository (e.g. Azure Container Registry quick task).
+RUN set -e; \
+    W=/app/TruFor/TruFor_train_test/pretrained_models; \
+    mkdir -p $W/noiseprint++ $W/segformers /app/BFree/weights/BFREE_dino2reg4; \
+    if [ ! -f $W/trufor.pth.tar ]; then \
+      curl -fsSL -o /tmp/trufor.zip https://www.grip.unina.it/download/prog/TruFor/TruFor_weights.zip; \
+      python -m zipfile -e /tmp/trufor.zip /tmp/trufor; \
+      find /tmp/trufor -name trufor.pth.tar -exec mv {} $W/ \; ; \
+      rm -rf /tmp/trufor /tmp/trufor.zip; \
+    fi; \
+    [ -f $W/noiseprint++/noiseprint++.th ] || curl -fsSL -o "$W/noiseprint++/noiseprint++.th" \
+      "https://raw.githubusercontent.com/grip-unina/TruFor/main/TruFor_train_test/pretrained_models/noiseprint%2B%2B/noiseprint%2B%2B.th"; \
+    [ -f $W/segformers/mit_b2.pth ] || curl -fsSL -o $W/segformers/mit_b2.pth \
+      https://raw.githubusercontent.com/grip-unina/TruFor/main/TruFor_train_test/pretrained_models/segformers/mit_b2.pth; \
+    if [ ! -f /app/BFree/weights/BFREE_dino2reg4/model_epoch_best.pth ]; then \
+      curl -fsSL -o /tmp/bfree.zip https://www.grip.unina.it/download/prog/B-Free/weights/BFREE_dino2reg4.zip; \
+      python -m zipfile -e /tmp/bfree.zip /tmp/bfree; \
+      find /tmp/bfree -name model_epoch_best.pth -exec mv {} /app/BFree/weights/BFREE_dino2reg4/ \; ; \
+      rm -rf /tmp/bfree /tmp/bfree.zip; \
+    fi; \
+    test -f $W/trufor.pth.tar && test -f /app/BFree/weights/BFREE_dino2reg4/model_epoch_best.pth && ls -la $W /app/BFree/weights/BFREE_dino2reg4
+
 EXPOSE 8000
 
 ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "trufor", \
