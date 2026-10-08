@@ -273,17 +273,36 @@ const label = k => String(k).replace(/_/g, ' ');
 const list = (title, arr) => Array.isArray(arr) && arr.length ? `<h3>${esc(title)}</h3><ul class="clean">${arr.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : '';
 const mdLite = s => esc(s).split('\n').map(l => l.trim() === '---' ? '<hr>' : `<p>${l.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')}</p>`).join('');
 
-function scorebar(name, v, marks) {
+function scorebar(name, v, marks, colored) {
+  const col = !colored || !Number.isFinite(v) ? '' : v >= 0.55 ? 'background:var(--bad)' : v >= 0.30 ? 'background:var(--warn)' : 'background:var(--ok)';
   const w = Number.isFinite(v) ? Math.max(0, Math.min(100, v * 100)) : 0;
   const m = (marks || []).map(x => `<i class="mark" style="left:${x * 100}%"></i>`).join('');
-  return `<div class="scorebar"><div class="l"><span>${esc(name)}</span><span>${num(v)}</span></div><div class="track"><span style="width:${w}%"></span>${m}</div></div>`;
+  return `<div class="scorebar"><div class="l"><span>${esc(name)}</span><span>${num(v)}</span></div><div class="track"><span style="width:${w}%;${col}"></span>${m}</div></div>`;
 }
 
-function hero(r, d) {
-  const t = tone(r.outcome);
+/* Forensics is advisory in the workflow; the page never shows "approved" when it disagrees. */
+function effective(r, fe) {
+  const t = tone(r.outcome), approved = t === 'ok';
+  if (fe && fe.status === 'ok') {
+    if (fe.verdict === 'high' && t !== 'bad')
+      return { t: 'bad', title: 'Manual review required: forensic risk high', msg: 'Content checks may pass, but the image shows signs of manipulation. Do not approve without human review.' };
+    if (fe.verdict === 'elevated' && approved)
+      return { t: 'warn', title: 'Review recommended: forensic risk elevated', msg: 'Content checks passed, but the forensic analysis found some indicators worth a second look.' };
+  } else if (approved) {
+    return { t: 'warn', title: 'Approved on content checks only', msg: 'The forensic check did not return a result, so image manipulation was not assessed.' };
+  }
+  return null;
+}
+
+function hero(r, d, fe) {
+  const ov = effective(r, fe);
+  const t = ov ? ov.t : tone(r.outcome);
+  const title = ov ? ov.title : label(r.outcome || 'result');
+  const base = ov ? `Workflow result: ${label(r.outcome || '')}${r.decision ? ' (' + r.decision + ')' : ''}. ${r.message || ''}` : (r.message || '');
   return `<div class="hero ${t}"><div class="ico">${ICON[t]}</div><div>
-    <h2>${esc(label(r.outcome || 'result'))}</h2>
-    <p>${esc(r.message || '')}</p>
+    <h2>${esc(title)}</h2>
+    <p>${esc(ov ? ov.msg : base)}</p>
+    ${ov ? `<div class="meta">${esc(base)}</div>` : ''}
     <div class="meta">Decision: ${esc(r.decision || '—')} · Document status: ${esc(d.document_status || '—')}${r.request_id ? ' · Request ' + esc(r.request_id) : ''}</div>
   </div></div>`;
 }
@@ -303,7 +322,7 @@ function forensicPane(fe) {
     <p class="legend">Bright areas mark pixels the model finds inconsistent with the rest of the image. A bright patch on a printed field is more meaningful than a bright face or photo edge.</p></div>` : '';
   return `<div class="grid2">
     <div class="card"><h2>Forensic risk <span class="chip ${verdictTone(fe.verdict)}" style="margin-left:6px">${esc(fe.verdict)}</span></h2>
-      ${scorebar('Combined score', fe.combined_score, [0.30, 0.55])}
+      ${scorebar('Combined score', fe.combined_score, [0.30, 0.55], true)}
       <div class="legend">Markers at 0.30 (elevated) and 0.55 (high).</div>
       ${fe.failed_stages && fe.failed_stages.length ? `<p class="err small">Failed stages: ${esc(fe.failed_stages.join(', '))}. The verdict is not reliable until they succeed.</p>` : ''}
     </div>
@@ -350,7 +369,7 @@ function render(r, httpStatus) {
         ${scorebar('OCR / AI agreement', d.ocr_ai_agreement)}
         ${lp ? `<div class="check"><span>Perforated number ${esc(lp.value ?? '—')}</span>${lp.matches_passport_number === true ? '<span class="chip ok">matches</span>' : lp.matches_passport_number === false ? '<span class="chip bad">mismatch</span>' : ''}</div>` : ''}
       </div></div>
-      ${fe && fe.status === 'ok' ? `<div class="card"><h2>Forensic risk <span class="chip ${verdictTone(fe.verdict)}" style="margin-left:6px">${esc(fe.verdict)}</span></h2>${scorebar('Combined score', fe.combined_score, [0.30, 0.55])}<div class="legend">Details are on the Forensics tab.</div></div>` : ''}
+      ${fe && fe.status === 'ok' ? `<div class="card"><h2>Forensic risk <span class="chip ${verdictTone(fe.verdict)}" style="margin-left:6px">${esc(fe.verdict)}</span></h2>${scorebar('Combined score', fe.combined_score, [0.30, 0.55], true)}<div class="legend">Details are on the Forensics tab.</div></div>` : ''}
       ${lists ? `<div class="card">${lists}</div>` : ''}`;
 
   const fields = `<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><h2 style="margin:0">Extracted fields</h2><button class="ghost" id="copy" type="button">Copy JSON</button></div>
@@ -360,7 +379,7 @@ function render(r, httpStatus) {
   const raw = `<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><h2 style="margin:0">Raw response</h2><button class="ghost" id="dl" type="button">Download JSON</button></div>
       <pre>${esc(JSON.stringify({ ...r, forensic_evidence: fe ? { ...fe, images: '[omitted]' } : fe }, null, 2))}</pre></div>`;
 
-  out.innerHTML = hero(r, d) +
+  out.innerHTML = hero(r, d, fe) +
     `<div class="tabs" role="tablist">
       <button role="tab" aria-selected="true" data-t="summary">Summary</button>
       <button role="tab" aria-selected="false" data-t="fields">Fields</button>
