@@ -1,0 +1,21 @@
+# Keep the Docker build context small — only PassportPipeline/, TruFor/, BFree/,
+# and deploy/ are actually COPY'd by deploy/Dockerfile.
+DocForgery/
+NPR/
+RedrobForgery/
+Samples/
+VerificationResults/
+passport_dataset/
+passport_dataset.zip
+results/
+.claude/
+**/__pycache__/
+**/*.pyc
+PassportPipeline/crop_test_results/
+PassportPipeline/heuristics_debug/
+PassportPipeline/results/
+TruFor/.venv/
+TruFor/TruFor_train_test/results/
+TruFor/TruFor_train_test/results_check/
+TruFor/TruFor_train_test/results_fake3/
+BFree/results/

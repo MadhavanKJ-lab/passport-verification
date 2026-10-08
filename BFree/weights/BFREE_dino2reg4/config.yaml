@@ -1,0 +1,5 @@
+arch: timm_c5i504_vit_base_patch14_reg4_dinov2.lvd142m
+model_name: BFREE_dino2reg4
+norm_type: resnet
+patch_size: null
+weights_file: model_epoch_best.pth

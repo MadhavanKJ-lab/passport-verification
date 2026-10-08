@@ -1,0 +1,47 @@
+# model weights and checkpoints (download separately)
+*.pth
+*.pt
+*.pth.tar
+*.safetensors
+*.onnx
+*.ckpt
+
+# environments
+.venv/
+venv/
+__pycache__/
+*.pyc
+node_modules/
+.vercel/
+
+# data: contains real passport images and per-image results (personal data)
+Samples/
+passport_dataset/
+passport_dataset.zip
+VerificationResults/
+results/
+BFree/results/
+**/results/
+
+# abandoned experiments
+DocForgery/
+NPR/
+RedrobForgery/
+
+# secrets and local config
+.env
+.env.*
+*.key
+.n8n_api_key
+api_key*.txt
+ocr_key*.txt
+.git_upstream_backup/
+TruFor/TruFor_train_test/dataset/
+TruFor/TruFor_train_test/results_check/
+TruFor/TruFor_train_test/pretrained_models/
+BFree/code/demo_images/
+PassportPipeline/crop_test_results/
+PassportPipeline/heuristics_debug/
+TruFor/TruFor_train_test/results*/
+TruFor/test_docker/images/
+*.npy

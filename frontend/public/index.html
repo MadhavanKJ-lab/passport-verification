@@ -1,0 +1,398 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Passport Verification</title>
+<meta name="description" content="OCR, AI validation and forensic image-manipulation analysis for passport images.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232f5bd3'/%3E%3Cpath d='M16 6l8 3v6c0 5-3.4 8.6-8 10-4.6-1.4-8-5-8-10V9z' fill='none' stroke='white' stroke-width='2' stroke-linejoin='round'/%3E%3Cpath d='M12.5 16l2.5 2.5 4.5-5' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #f4f6fa; --card: #ffffff; --text: #151a22; --muted: #5b6574; --line: #e2e6ed;
+    --accent: #2f5bd3; --accent-soft: #e8eefc;
+    --ok: #17803f; --ok-bg: #e5f4ec; --warn: #9a6200; --warn-bg: #fdf1dc;
+    --bad: #b3261e; --bad-bg: #fcebe9; --neutral-bg: #edf0f5;
+    --shadow: 0 1px 2px rgba(16,24,40,.05), 0 4px 16px rgba(16,24,40,.05);
+  }
+  :root[data-theme="dark"] {
+    --bg: #0f1218; --card: #181c24; --text: #e7eaf0; --muted: #98a2b1; --line: #2a303b;
+    --accent: #86a3f5; --accent-soft: #1d2740;
+    --ok: #5fd08f; --ok-bg: #12301f; --warn: #f0b85a; --warn-bg: #33270f;
+    --bad: #f2867b; --bad-bg: #3a1b18; --neutral-bg: #222833;
+    --shadow: none;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0f1218; --card: #181c24; --text: #e7eaf0; --muted: #98a2b1; --line: #2a303b;
+      --accent: #86a3f5; --accent-soft: #1d2740;
+      --ok: #5fd08f; --ok-bg: #12301f; --warn: #f0b85a; --warn-bg: #33270f;
+      --bad: #f2867b; --bad-bg: #3a1b18; --neutral-bg: #222833;
+      --shadow: none;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 16px; }
+  header.top { border-bottom: 1px solid var(--line); background: var(--card); }
+  header.top .wrap { display: flex; align-items: center; gap: 12px; height: 60px; }
+  .logo { width: 32px; height: 32px; flex: none; }
+  header h1 { font-size: 17px; margin: 0; letter-spacing: -.01em; }
+  header .spacer { flex: 1; }
+  .icon-btn { background: transparent; color: var(--muted); border: 1px solid var(--line); border-radius: 8px; width: 36px; height: 36px; padding: 0; display: grid; place-items: center; cursor: pointer; }
+  .icon-btn:hover { color: var(--text); }
+  main { padding: 24px 0 72px; }
+  .intro { margin: 0 0 20px; color: var(--muted); max-width: 70ch; }
+  .layout { display: grid; grid-template-columns: 360px 1fr; gap: 20px; align-items: start; }
+  @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px; box-shadow: var(--shadow); }
+  .card + .card { margin-top: 16px; }
+  h2 { font-size: 15px; margin: 0 0 12px; letter-spacing: -.005em; }
+  h3 { font-size: 13px; margin: 14px 0 6px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+  .muted { color: var(--muted); }
+  .small { font-size: 13px; }
+
+  /* upload */
+  .drop { border: 2px dashed var(--line); border-radius: 12px; padding: 22px 16px; text-align: center; cursor: pointer; transition: border-color .15s, background .15s; }
+  .drop:hover, .drop:focus-visible, .drop.over { border-color: var(--accent); background: var(--accent-soft); outline: none; }
+  .drop svg { width: 36px; height: 36px; color: var(--accent); }
+  .drop strong { display: block; margin-top: 6px; }
+  .drop img { max-width: 100%; max-height: 260px; border-radius: 8px; display: block; margin: 0 auto; }
+  .drop.has-image { padding: 10px; }
+  .file-meta { display: flex; justify-content: space-between; gap: 8px; margin-top: 10px; font-size: 13px; color: var(--muted); }
+  .file-meta span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  button.primary { width: 100%; margin-top: 14px; background: var(--accent); color: #fff; border: 0; border-radius: 10px; padding: 12px 18px; font: inherit; font-weight: 600; cursor: pointer; }
+  :root[data-theme="dark"] button.primary { color: #0f1218; }
+  button.primary:disabled { opacity: .45; cursor: not-allowed; }
+  button.ghost { background: transparent; color: var(--accent); border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; font: inherit; font-size: 13px; cursor: pointer; }
+  button.ghost:hover { background: var(--accent-soft); }
+  .privacy { margin-top: 14px; font-size: 12.5px; color: var(--muted); }
+
+  /* pipeline steps */
+  .steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+  .steps li { display: flex; gap: 10px; align-items: flex-start; font-size: 13.5px; }
+  .steps .dot { width: 22px; height: 22px; border-radius: 50%; background: var(--neutral-bg); color: var(--muted); display: grid; place-items: center; font-size: 12px; font-weight: 700; flex: none; }
+  .steps b { display: block; font-weight: 600; }
+  .steps span.d { color: var(--muted); }
+
+  /* progress */
+  .progress { height: 6px; border-radius: 3px; background: var(--neutral-bg); overflow: hidden; margin: 12px 0 8px; }
+  .progress > i { display: block; height: 100%; width: 40%; background: var(--accent); border-radius: 3px; animation: slide 1.4s ease-in-out infinite; }
+  @keyframes slide { 0% { margin-left: -40%; } 100% { margin-left: 100%; } }
+  @media (prefers-reduced-motion: reduce) { .progress > i { animation: none; width: 100%; opacity: .5; } }
+
+  /* hero verdict */
+  .hero { display: flex; gap: 16px; align-items: center; border-radius: 14px; padding: 18px; border: 1px solid var(--line); }
+  .hero.ok { background: var(--ok-bg); } .hero.warn { background: var(--warn-bg); } .hero.bad { background: var(--bad-bg); }
+  .hero .ico { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; flex: none; background: var(--card); }
+  .hero.ok .ico { color: var(--ok); } .hero.warn .ico { color: var(--warn); } .hero.bad .ico { color: var(--bad); }
+  .hero .ico svg { width: 26px; height: 26px; }
+  .hero h2 { font-size: 18px; margin: 0 0 2px; text-transform: capitalize; }
+  .hero p { margin: 0; }
+  .hero .meta { font-size: 12.5px; color: var(--muted); margin-top: 6px; }
+
+  .chip { display: inline-block; border-radius: 999px; padding: 2px 10px; font-size: 12.5px; font-weight: 600; }
+  .chip.ok { background: var(--ok-bg); color: var(--ok); } .chip.warn { background: var(--warn-bg); color: var(--warn); }
+  .chip.bad { background: var(--bad-bg); color: var(--bad); } .chip.neutral { background: var(--neutral-bg); color: var(--muted); }
+
+  /* tabs */
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin: 20px 0 16px; overflow-x: auto; }
+  .tabs button { background: none; border: 0; border-bottom: 2px solid transparent; color: var(--muted); padding: 10px 14px; font: inherit; font-weight: 600; cursor: pointer; white-space: nowrap; }
+  .tabs button[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); }
+  .pane[hidden] { display: none; }
+
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+  table { width: 100%; border-collapse: collapse; }
+  td { padding: 8px 4px; border-bottom: 1px solid var(--line); vertical-align: top; overflow-wrap: anywhere; }
+  tr:last-child td { border-bottom: 0; }
+  td:first-child { color: var(--muted); width: 44%; }
+  td .mono { font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+  .check { display: flex; justify-content: space-between; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .check:last-child { border-bottom: 0; }
+  ul.clean { margin: 0; padding-left: 20px; } ul.clean li { margin: 3px 0; }
+
+  /* forensic gauges */
+  .scorebar { margin-bottom: 12px; }
+  .scorebar .l { display: flex; justify-content: space-between; font-size: 13.5px; }
+  .track { position: relative; height: 10px; background: var(--neutral-bg); border-radius: 5px; margin-top: 5px; overflow: visible; }
+  .track > span { display: block; height: 100%; border-radius: 5px; background: var(--accent); }
+  .track .mark { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--muted); opacity: .55; }
+  .legend { font-size: 12px; color: var(--muted); margin-top: 6px; }
+
+  /* image compare */
+  .compare { position: relative; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); background: #000; }
+  .compare img { display: block; width: 100%; height: auto; }
+  .compare img.top { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+  .controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-top: 10px; font-size: 13px; }
+  .controls select, .controls input[type=range] { accent-color: var(--accent); }
+  select { background: var(--card); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font: inherit; }
+
+  pre { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--neutral-bg); padding: 12px; border-radius: 10px; font: 12.5px/1.55 ui-monospace, Consolas, monospace; margin: 0; max-height: 420px; overflow: auto; }
+  .md p { margin: 0 0 4px; }
+  .hidden { display: none !important; }
+  .err { color: var(--bad); }
+  details > summary { cursor: pointer; color: var(--muted); font-size: 13.5px; }
+  footer { color: var(--muted); font-size: 12.5px; text-align: center; padding: 0 16px 32px; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <svg class="logo" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#2f5bd3"/><path d="M16 6l8 3v6c0 5-3.4 8.6-8 10-4.6-1.4-8-5-8-10V9z" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round"/><path d="M12.5 16l2.5 2.5 4.5-5" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <h1>Passport Verification</h1>
+    <span class="spacer"></span>
+    <button class="icon-btn" id="theme" type="button" title="Toggle theme" aria-label="Toggle theme">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+    </button>
+  </div>
+</header>
+
+<main class="wrap">
+  <p class="intro">Upload a passport image. It is read with OCR, checked by an AI reviewer against the MRZ rules, and analysed for image manipulation (TruFor, B-Free and classical checks). Results are decision support, not an authentication verdict.</p>
+
+  <div class="layout">
+    <aside>
+      <div class="card">
+        <h2>1. Upload</h2>
+        <div id="drop" class="drop" tabindex="0" role="button" aria-label="Choose or drop a passport image">
+          <div id="dropEmpty">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3"/></svg>
+            <strong>Drop an image or click to choose</strong>
+            <span class="muted small">JPG or PNG, up to 15 MB</span>
+          </div>
+          <img id="preview" class="hidden" alt="Selected passport preview">
+        </div>
+        <input id="file" type="file" accept="image/jpeg,image/png" class="hidden">
+        <div class="file-meta hidden" id="fileMeta"><span id="fileName"></span><span id="fileSize"></span></div>
+        <button id="go" class="primary" type="button" disabled>Verify passport</button>
+        <div id="status" class="small muted" role="status" aria-live="polite" style="margin-top:10px"></div>
+        <div class="progress hidden" id="progress"><i></i></div>
+        <p class="privacy">Your image is sent to the verification workflow and Azure-hosted services. The forensic service keeps nothing after responding; this page stores nothing.</p>
+      </div>
+
+      <div class="card">
+        <h2>What runs</h2>
+        <ol class="steps">
+          <li><span class="dot">1</span><div><b>OCR</b><span class="d">PaddleOCR reads every line, including the MRZ.</span></div></li>
+          <li><span class="dot">2</span><div><b>AI validation</b><span class="d">Checks fields, MRZ check digits and visual consistency.</span></div></li>
+          <li><span class="dot">3</span><div><b>Forensics</b><span class="d">TruFor, B-Free and OpenCV heuristics look for edits and synthetic content.</span></div></li>
+        </ol>
+      </div>
+    </aside>
+
+    <section aria-live="polite">
+      <div id="empty" class="card muted">Results will appear here. A full check usually takes two to four minutes.</div>
+      <div id="results" class="hidden"></div>
+    </section>
+  </div>
+</main>
+<footer>Forensic scores are probabilistic. A low score does not prove a document is genuine.</footer>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const B64 = /^[A-Za-z0-9+/=\s]+$/;
+const MAX_BYTES = 15 * 1024 * 1024;
+const ICON = {
+  ok: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
+  warn: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v5M12 16.5v.5"/><path d="M10.3 4.2L2.8 17.5A2 2 0 004.5 20.5h15a2 2 0 001.7-3L13.7 4.2a2 2 0 00-3.4 0z"/></svg>',
+  bad: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg>'
+};
+
+let fileB64 = null, previewUrl = null, timer = null, endpoint = '/api/verify', lastResult = null;
+
+/* theme */
+(function () {
+  try { const t = localStorage.getItem('theme'); if (t) document.documentElement.dataset.theme = t; } catch {}
+  $('theme').onclick = () => {
+    const dark = document.documentElement.dataset.theme === 'dark' ||
+      (!document.documentElement.dataset.theme && matchMedia('(prefers-color-scheme: dark)').matches);
+    const next = dark ? 'light' : 'dark';
+    document.documentElement.dataset.theme = next;
+    try { localStorage.setItem('theme', next); } catch {}
+  };
+})();
+
+/* endpoint: a deployed site gets the webhook URL from /api/config; the local server proxies /api/verify */
+fetch('/api/config').then(r => r.ok ? r.json() : null).then(c => { if (c && c.webhookUrl) endpoint = c.webhookUrl; }).catch(() => {});
+
+/* upload */
+const fmtSize = n => n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.round(n / 1024) + ' KB';
+function pick(f) {
+  if (!f) return;
+  if (!/^image\/(jpeg|png)$/.test(f.type)) { $('status').textContent = 'Please choose a JPG or PNG image.'; return; }
+  if (f.size > MAX_BYTES) { $('status').textContent = 'That file is over 15 MB. Please choose a smaller image.'; return; }
+  const r = new FileReader();
+  r.onload = () => {
+    previewUrl = String(r.result);
+    $('preview').src = previewUrl; $('preview').classList.remove('hidden');
+    $('dropEmpty').classList.add('hidden'); $('drop').classList.add('has-image');
+    fileB64 = previewUrl.split(',')[1];
+    $('fileName').textContent = f.name; $('fileSize').textContent = fmtSize(f.size);
+    $('fileMeta').classList.remove('hidden');
+    $('go').disabled = false; $('status').textContent = '';
+  };
+  r.readAsDataURL(f);
+}
+$('drop').onclick = () => $('file').click();
+$('drop').onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('file').click(); } };
+$('file').onchange = e => pick(e.target.files[0]);
+['dragover', 'dragenter'].forEach(t => $('drop').addEventListener(t, e => { e.preventDefault(); $('drop').classList.add('over'); }));
+['dragleave', 'drop'].forEach(t => $('drop').addEventListener(t, e => { e.preventDefault(); $('drop').classList.remove('over'); }));
+$('drop').addEventListener('drop', e => pick(e.dataTransfer.files[0]));
+
+$('go').onclick = async () => {
+  if (!fileB64) return;
+  $('go').disabled = true; $('results').classList.add('hidden'); $('empty').classList.add('hidden');
+  $('progress').classList.remove('hidden');
+  const t0 = Date.now();
+  const tick = () => { $('status').textContent = `Verifying… ${Math.round((Date.now() - t0) / 1000)}s. OCR, AI review and forensics run in sequence.`; };
+  tick(); timer = setInterval(tick, 1000);
+  try {
+    const res = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ input: fileB64 }) });
+    const text = await res.text();
+    let body; try { body = JSON.parse(text); } catch { body = { error: text || `HTTP ${res.status}` }; }
+    lastResult = body;
+    render(body, res.status);
+    $('status').textContent = `Done in ${Math.round((Date.now() - t0) / 1000)}s (HTTP ${res.status})`;
+  } catch (e) {
+    $('status').innerHTML = `<span class="err">Request failed: ${esc(e.message)}. The service may be unreachable or blocked by CORS.</span>`;
+    $('empty').classList.remove('hidden');
+  } finally { clearInterval(timer); $('progress').classList.add('hidden'); $('go').disabled = false; }
+};
+
+/* helpers */
+const tone = o => ({ valid_high_confidence: 'ok', valid_low_confidence: 'warn', invalid_low_confidence: 'warn', invalid_high_confidence: 'bad', not_a_passport: 'bad' }[o] || 'warn');
+const verdictTone = v => !v ? 'neutral' : v === 'high' ? 'bad' : v === 'low' ? 'ok' : 'warn';
+const boolChip = (v, good = true) => v === null || v === undefined ? '<span class="chip neutral">unknown</span>'
+  : `<span class="chip ${v === good ? 'ok' : 'bad'}">${v ? 'yes' : 'no'}</span>`;
+const pct = v => Number.isFinite(v) ? `${Math.round(v * 100)}%` : '—';
+const num = v => Number.isFinite(v) ? v.toFixed(3) : 'n/a';
+const label = k => String(k).replace(/_/g, ' ');
+const list = (title, arr) => Array.isArray(arr) && arr.length ? `<h3>${esc(title)}</h3><ul class="clean">${arr.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : '';
+const mdLite = s => esc(s).split('\n').map(l => l.trim() === '---' ? '<hr>' : `<p>${l.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')}</p>`).join('');
+
+function scorebar(name, v, marks) {
+  const w = Number.isFinite(v) ? Math.max(0, Math.min(100, v * 100)) : 0;
+  const m = (marks || []).map(x => `<i class="mark" style="left:${x * 100}%"></i>`).join('');
+  return `<div class="scorebar"><div class="l"><span>${esc(name)}</span><span>${num(v)}</span></div><div class="track"><span style="width:${w}%"></span>${m}</div></div>`;
+}
+
+function hero(r, d) {
+  const t = tone(r.outcome);
+  return `<div class="hero ${t}"><div class="ico">${ICON[t]}</div><div>
+    <h2>${esc(label(r.outcome || 'result'))}</h2>
+    <p>${esc(r.message || '')}</p>
+    <div class="meta">Decision: ${esc(r.decision || '—')} · Document status: ${esc(d.document_status || '—')}${r.request_id ? ' · Request ' + esc(r.request_id) : ''}</div>
+  </div></div>`;
+}
+
+function forensicPane(fe) {
+  if (!fe) return '<div class="card muted">Forensic evidence was not included in this response.</div>';
+  if (fe.status !== 'ok') return `<div class="card"><span class="chip neutral">unavailable</span> <span class="muted">${esc(fe.error || 'The forensic service did not return a result.')}</span></div>`;
+  const s = fe.stage_scores || {};
+  const im = fe.images || {};
+  const layers = [['trufor_overlay', 'TruFor overlay'], ['trufor_heatmap', 'TruFor heatmap'], ['heuristics_flags', 'Heuristic flags']]
+    .filter(([k]) => typeof im[k] === 'string' && B64.test(im[k]));
+  const opts = layers.map(([k, n]) => `<option value="${esc(k)}">${esc(n)}</option>`).join('');
+  const compare = layers.length && previewUrl ? `<div class="card"><h2>Where the model looked</h2>
+    <div class="compare"><img src="${esc(previewUrl)}" alt="Uploaded passport"><img class="top" id="layerImg" alt="Forensic layer" style="opacity:.65"></div>
+    <div class="controls"><label>Layer <select id="layerSel">${opts}</select></label>
+    <label>Opacity <input id="layerOp" type="range" min="0" max="100" value="65"></label></div>
+    <p class="legend">Bright areas mark pixels the model finds inconsistent with the rest of the image. A bright patch on a printed field is more meaningful than a bright face or photo edge.</p></div>` : '';
+  return `<div class="grid2">
+    <div class="card"><h2>Forensic risk <span class="chip ${verdictTone(fe.verdict)}" style="margin-left:6px">${esc(fe.verdict)}</span></h2>
+      ${scorebar('Combined score', fe.combined_score, [0.30, 0.55])}
+      <div class="legend">Markers at 0.30 (elevated) and 0.55 (high).</div>
+      ${fe.failed_stages && fe.failed_stages.length ? `<p class="err small">Failed stages: ${esc(fe.failed_stages.join(', '))}. The verdict is not reliable until they succeed.</p>` : ''}
+    </div>
+    <div class="card"><h2>By model</h2>
+      ${scorebar('TruFor, edits (max of pooled and localized)', s.trufor)}
+      ${scorebar('TruFor pooled (whole image)', s.trufor_pooled)}
+      ${scorebar('TruFor localized (concentrated patch)', s.trufor_localized)}
+      ${scorebar('B-Free, AI-generated image', s.bfree_synthetic_probability)}
+      ${scorebar('Heuristics, classical CV', s.heuristics)}
+    </div></div>${compare}
+    ${fe.justification ? `<details class="card"><summary>Forensic justification</summary><pre style="margin-top:10px">${esc(fe.justification)}</pre></details>` : ''}`;
+}
+
+function render(r, httpStatus) {
+  const out = $('results'); out.classList.remove('hidden');
+  if (!r || (!r.data && !r.outcome)) {
+    const msg = r?.message || r?.error?.message || (typeof r?.error === 'string' ? r.error : '') || 'Unexpected response';
+    out.innerHTML = `<div class="hero bad"><div class="ico">${ICON.bad}</div><div><h2>Request failed</h2><p>${esc(msg)}</p>
+      ${r?.error?.details ? `<div class="meta">${esc(r.error.details)}</div>` : ''}<div class="meta">HTTP ${esc(httpStatus)}</div></div></div>`;
+    return;
+  }
+  const d = r.data || {}, c = d.checks || {}, f = d.extracted_fields || {}, fe = r.forensic_evidence;
+
+  const fieldRows = Object.entries(f).filter(([k]) => !/^mrz_line/.test(k))
+    .map(([k, v]) => `<tr><td>${esc(label(k))}</td><td>${esc(v ?? '—')}</td></tr>`).join('');
+  const mrz = ['mrz_line_1', 'mrz_line_2'].filter(k => f[k]).map(k => `<tr><td>${esc(label(k))}</td><td class="mono">${esc(f[k])}</td></tr>`).join('');
+  const lp = d.laser_perforated_number;
+  const lists = list('Validity reasons', d.validity_reasons) + list('Manual review reasons', d.manual_review_reasons) + list('Issues', d.issues) + list('OCR discrepancies', d.ocr_discrepancies) + list('Uncertain fields', d.uncertain_fields);
+
+  const summary = `<div class="grid2">
+      <div class="card"><h2>Validation checks</h2>
+        <div class="check"><span>Is a passport</span>${boolChip(c.is_passport)}</div>
+        <div class="check"><span>MRZ present</span>${boolChip(c.mrz_present)}</div>
+        <div class="check"><span>MRZ check digits valid</span>${boolChip(c.mrz_check_digits_valid)}</div>
+        <div class="check"><span>MRZ matches visual zone</span>${boolChip(c.mrz_matches_visual_zone)}</div>
+        <div class="check"><span>Expired</span>${boolChip(c.is_expired, false)}</div>
+        <div class="check"><span>Visible tampering signs</span>${boolChip(c.visible_tampering_signs, false)}</div>
+        <div class="check"><span>Image quality</span><span>${esc(c.image_quality || '—')}</span></div>
+      </div>
+      <div class="card"><h2>Confidence</h2>
+        ${scorebar('OCR confidence', d.ocr_confidence)}
+        ${scorebar('AI transcription', d.ai_transcription_confidence)}
+        ${scorebar('AI validity', d.ai_validity_confidence)}
+        ${scorebar('OCR / AI agreement', d.ocr_ai_agreement)}
+        ${lp ? `<div class="check"><span>Perforated number ${esc(lp.value ?? '—')}</span>${lp.matches_passport_number === true ? '<span class="chip ok">matches</span>' : lp.matches_passport_number === false ? '<span class="chip bad">mismatch</span>' : ''}</div>` : ''}
+      </div></div>
+      ${fe && fe.status === 'ok' ? `<div class="card"><h2>Forensic risk <span class="chip ${verdictTone(fe.verdict)}" style="margin-left:6px">${esc(fe.verdict)}</span></h2>${scorebar('Combined score', fe.combined_score, [0.30, 0.55])}<div class="legend">Details are on the Forensics tab.</div></div>` : ''}
+      ${lists ? `<div class="card">${lists}</div>` : ''}`;
+
+  const fields = `<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><h2 style="margin:0">Extracted fields</h2><button class="ghost" id="copy" type="button">Copy JSON</button></div>
+      <table>${fieldRows || '<tr><td>No fields extracted</td><td></td></tr>'}${mrz}</table></div>
+    ${d.markdown_content ? `<div class="card"><h2>OCR transcription</h2><div class="md">${mdLite(d.markdown_content)}</div></div>` : ''}`;
+
+  const raw = `<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><h2 style="margin:0">Raw response</h2><button class="ghost" id="dl" type="button">Download JSON</button></div>
+      <pre>${esc(JSON.stringify({ ...r, forensic_evidence: fe ? { ...fe, images: '[omitted]' } : fe }, null, 2))}</pre></div>`;
+
+  out.innerHTML = hero(r, d) +
+    `<div class="tabs" role="tablist">
+      <button role="tab" aria-selected="true" data-t="summary">Summary</button>
+      <button role="tab" aria-selected="false" data-t="fields">Fields</button>
+      <button role="tab" aria-selected="false" data-t="forensics">Forensics</button>
+      <button role="tab" aria-selected="false" data-t="raw">Raw</button></div>
+    <div class="pane" data-p="summary">${summary}</div>
+    <div class="pane" data-p="fields" hidden>${fields}</div>
+    <div class="pane" data-p="forensics" hidden>${forensicPane(fe)}</div>
+    <div class="pane" data-p="raw" hidden>${raw}</div>`;
+
+  out.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
+    out.querySelectorAll('.tabs button').forEach(x => x.setAttribute('aria-selected', x === b));
+    out.querySelectorAll('.pane').forEach(p => p.hidden = p.dataset.p !== b.dataset.t);
+  });
+
+  const sel = $('layerSel');
+  if (sel && fe && fe.images) {
+    const apply = () => { $('layerImg').src = 'data:image/png;base64,' + fe.images[sel.value]; };
+    sel.onchange = apply; apply();
+    $('layerOp').oninput = e => { $('layerImg').style.opacity = e.target.value / 100; };
+  }
+  if ($('copy')) $('copy').onclick = async () => {
+    try { await navigator.clipboard.writeText(JSON.stringify(f, null, 2)); $('copy').textContent = 'Copied'; } catch { $('copy').textContent = 'Copy failed'; }
+    setTimeout(() => { if ($('copy')) $('copy').textContent = 'Copy JSON'; }, 1500);
+  };
+  if ($('dl')) $('dl').onclick = () => {
+    const blob = new Blob([JSON.stringify(lastResult, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+    a.download = `passport-verification-${r.request_id || Date.now()}.json`; a.click(); URL.revokeObjectURL(a.href);
+  };
+  out.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+</script>
+</body>
+</html>
