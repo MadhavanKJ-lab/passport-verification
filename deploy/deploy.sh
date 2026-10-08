@@ -2,7 +2,6 @@
 # Azure deployment sequence for the passport verification pipeline.
 # Run from the repository root (Passport_verification/).
 # Needs 4 vCPU / 8 GiB: TruFor is OOM-killed at 2 vCPU / 4 GiB.
-# Target subscription confirmed: "Ducont AI" (Ducont India Systems Pvt Ltd tenant).
 set -euo pipefail
 
 RESOURCE_GROUP="rg-passport-verify-dewa"
