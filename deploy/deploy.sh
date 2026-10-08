@@ -1,6 +1,7 @@
 #!/bin/bash
 # Azure deployment sequence for the passport verification pipeline.
 # Run from the repository root (Passport_verification/).
+# Needs 4 vCPU / 8 GiB: TruFor is OOM-killed at 2 vCPU / 4 GiB.
 # Target subscription confirmed: "Ducont AI" (Ducont India Systems Pvt Ltd tenant).
 set -euo pipefail
 
@@ -10,7 +11,7 @@ ACR_NAME="passportverifyacr"
 ENV_NAME="passport-verify-env"
 APP_NAME="passport-verify-api"
 IMAGE_NAME="passport-verify"
-IMAGE_TAG="v1"
+IMAGE_TAG="v2"
 
 echo "=== 1. Resource group ==="
 az group create --name "$RESOURCE_GROUP" --location "$LOCATION"
@@ -34,7 +35,7 @@ az containerapp create \
   --environment "$ENV_NAME" \
   --image "${ACR_NAME}.azurecr.io/${IMAGE_NAME}:${IMAGE_TAG}" \
   --registry-server "${ACR_NAME}.azurecr.io" \
-  --cpu 2 --memory 4Gi \
+  --cpu 4 --memory 8Gi \
   --min-replicas 0 --max-replicas 2 \
   --secrets api-key="$API_KEY" \
   --env-vars API_KEY=secretref:api-key \
