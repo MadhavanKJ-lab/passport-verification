@@ -77,6 +77,8 @@ COPY deploy/api.py /app/api.py
 # Weights are not stored in git. If they were not copied from a local checkout, fetch
 # them from the upstream authors (GRIP, Univ. of Naples) so the image also builds
 # straight from the GitHub repository (e.g. Azure Container Registry quick task).
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
+ && apt-get clean
 RUN set -e; \
     W=/app/TruFor/TruFor_train_test/pretrained_models; \
     mkdir -p $W/noiseprint++ $W/segformers /app/BFree/weights/BFREE_dino2reg4; \
