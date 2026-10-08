@@ -1,11 +1,11 @@
 """Local frontend for the Passport_Verify n8n workflow.
 
 Serves index.html and proxies uploads to the n8n webhook so the webhook's
-"API" header key stays server-side and the browser never hits CORS.
+X-Webhook-Key header key stays server-side and the browser never hits CORS.
 
 Config via environment variables:
   N8N_WEBHOOK_URL  full webhook URL (required)
-  N8N_API_KEY      value for the webhook's "API" header
+  N8N_API_KEY      value for the webhook's X-Webhook-Key header
   PORT             optional, default 8080
 
 Run:  python server.py   then open http://localhost:8080
@@ -44,7 +44,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.path in ('/', '/index.html'):
             self._send(200, INDEX.read_bytes(), 'text/html; charset=utf-8')
         elif self.path == '/api/config':
-            self._send(200, json.dumps({'webhookUrl': None}))  # None = use this server's /api/verify proxy
+            self._send(200, json.dumps({'maxBytes': 15 * 1024 * 1024}))
         elif self.path == '/config':
             self._send(200, json.dumps({'webhook': bool(WEBHOOK_URL), 'api_key_set': bool(api_key())}))
         else:
@@ -65,7 +65,7 @@ class Handler(BaseHTTPRequestHandler):
         body = self.rfile.read(length)
         headers = {'Content-Type': 'application/json'}
         if key:  # webhook header auth is optional
-            headers['API'] = key
+            headers['X-Webhook-Key'] = key
         req = urllib.request.Request(WEBHOOK_URL, data=body, method='POST', headers=headers)
         try:
             with urllib.request.urlopen(req, timeout=900) as resp:
@@ -82,5 +82,5 @@ class Handler(BaseHTTPRequestHandler):
 if __name__ == '__main__':
     print(f'Passport verification UI on http://localhost:{PORT}')
     if not api_key():
-        print(f'No webhook API key set — calling without the "API" header (add {KEY_FILE.name} if auth is enabled).')
+        print(f'No webhook API key set — calling without the X-Webhook-Key header (add {KEY_FILE.name} if auth is enabled).')
     ThreadingHTTPServer(('127.0.0.1', PORT), Handler).serve_forever()

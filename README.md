@@ -86,7 +86,7 @@ cd frontend
 N8N_WEBHOOK_URL=<your n8n webhook URL> python server.py   # http://localhost:8080
 ```
 
-The local server proxies uploads to the webhook. Set `N8N_API_KEY` if the webhook requires an `API` header.
+The local server proxies uploads to the webhook. Set `N8N_API_KEY` if the webhook requires the `X-Webhook-Key` header.
 
 ## Services and API
 
@@ -114,13 +114,16 @@ bash deploy/deploy.sh
 
 Creates the resource group, container registry, Container Apps environment and the forensic app, with an API key stored as a secret. The forensic container needs **4 vCPU and 8 GiB**: TruFor is killed at 2 vCPU / 4 GiB. Set `--min-replicas 1` if you want to avoid cold starts, which can fail large uploads with a `507` from the ingress.
 
+### Backend using only the Azure portal
+
+No CLI or local Docker needed: see [docs/AZURE_PORTAL_DEPLOY.md](docs/AZURE_PORTAL_DEPLOY.md). The forensic image downloads the model weights while it builds, so it can be built directly from this repository.
+
 ### UI on Vercel
 
 1. Import this repository and set **Root Directory** to `frontend`.
-2. Add the environment variable `N8N_WEBHOOK_URL`.
-3. Allow the Vercel origin in the n8n webhook's CORS setting, and enable header auth before sharing the link.
+2. Add environment variables `N8N_WEBHOOK_URL` and `N8N_WEBHOOK_KEY` (the value of the webhook's `X-Webhook-Key` header auth).
 
-The page reads the webhook from `/api/config` and calls it from the browser. A server-side proxy is not used because runs take several minutes and uploads exceed Vercel's request size limit.
+The browser calls `/api/verify`, a Vercel function that forwards to the webhook with the key, so the key and webhook URL never reach the browser. Vercel caps request bodies at 4.5 MB, so the hosted page accepts images up to 3 MB.
 
 ## Limitations
 

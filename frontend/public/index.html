@@ -159,7 +159,7 @@
           <div id="dropEmpty">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3"/></svg>
             <strong>Drop an image or click to choose</strong>
-            <span class="muted small">JPG or PNG, up to 15 MB</span>
+            <span class="muted small">JPG or PNG, up to <span id="limit">15 MB</span></span>
           </div>
           <img id="preview" class="hidden" alt="Selected passport preview">
         </div>
@@ -193,14 +193,15 @@
 const $ = id => document.getElementById(id);
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const B64 = /^[A-Za-z0-9+/=\s]+$/;
-const MAX_BYTES = 15 * 1024 * 1024;
+let MAX_BYTES = 15 * 1024 * 1024;
 const ICON = {
   ok: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
   warn: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v5M12 16.5v.5"/><path d="M10.3 4.2L2.8 17.5A2 2 0 004.5 20.5h15a2 2 0 001.7-3L13.7 4.2a2 2 0 00-3.4 0z"/></svg>',
   bad: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg>'
 };
 
-let fileB64 = null, previewUrl = null, timer = null, endpoint = '/api/verify', lastResult = null;
+let fileB64 = null, previewUrl = null, timer = null, lastResult = null;
+const endpoint = '/api/verify';
 
 /* theme */
 (function () {
@@ -214,15 +215,17 @@ let fileB64 = null, previewUrl = null, timer = null, endpoint = '/api/verify', l
   };
 })();
 
-/* endpoint: a deployed site gets the webhook URL from /api/config; the local server proxies /api/verify */
-fetch('/api/config').then(r => r.ok ? r.json() : null).then(c => { if (c && c.webhookUrl) endpoint = c.webhookUrl; }).catch(() => {});
+/* both the local server and the Vercel function proxy /api/verify; the host reports its upload cap */
+fetch('/api/config').then(r => r.ok ? r.json() : null).then(c => {
+  if (c && c.maxBytes) { MAX_BYTES = c.maxBytes; $('limit').textContent = Math.round(c.maxBytes / 1048576) + ' MB'; }
+}).catch(() => {});
 
 /* upload */
 const fmtSize = n => n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.round(n / 1024) + ' KB';
 function pick(f) {
   if (!f) return;
   if (!/^image\/(jpeg|png)$/.test(f.type)) { $('status').textContent = 'Please choose a JPG or PNG image.'; return; }
-  if (f.size > MAX_BYTES) { $('status').textContent = 'That file is over 15 MB. Please choose a smaller image.'; return; }
+  if (f.size > MAX_BYTES) { $('status').textContent = `That file is over ${Math.round(MAX_BYTES / 1048576)} MB. Please choose a smaller image.`; return; }
   const r = new FileReader();
   r.onload = () => {
     previewUrl = String(r.result);
@@ -257,7 +260,7 @@ $('go').onclick = async () => {
     render(body, res.status);
     $('status').textContent = `Done in ${Math.round((Date.now() - t0) / 1000)}s (HTTP ${res.status})`;
   } catch (e) {
-    $('status').innerHTML = `<span class="err">Request failed: ${esc(e.message)}. The service may be unreachable or blocked by CORS.</span>`;
+    $('status').innerHTML = `<span class="err">Request failed: ${esc(e.message)}. The service may be unreachable.</span>`;
     $('empty').classList.remove('hidden');
   } finally { clearInterval(timer); $('progress').classList.add('hidden'); $('go').disabled = false; }
 };

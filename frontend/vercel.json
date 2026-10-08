@@ -1,4 +1,5 @@
 {
+  "functions": { "api/verify.js": { "maxDuration": 300 } },
   "headers": [
     {
       "source": "/(.*)",
