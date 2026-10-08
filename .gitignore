@@ -36,7 +36,7 @@ RedrobForgery/
 api_key*.txt
 ocr_key*.txt
 .git_upstream_backup/
-TruFor/TruFor_train_test/dataset/
+TruFor/TruFor_train_test/dataset/data/
 TruFor/TruFor_train_test/results_check/
 TruFor/TruFor_train_test/pretrained_models/
 BFree/code/demo_images/
