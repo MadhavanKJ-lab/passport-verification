@@ -38,8 +38,31 @@
 # anomaly map — validated to distinguish a genuine tight tampered blob from the
 # scattered natural-edge noise clean images also show at their peak pixels,
 # which raw peak/percentile values alone could NOT do). The effective TruFor
-# signal fed into this combiner is max(trufor_score, trufor_localized_score), so
-# a tiny but highly-localized edit isn't washed out by the rest of the document.
+# signal fed into this combiner is max(trufor_score, noise-floored
+# trufor_localized_score) (see below), so a tiny but highly-localized edit isn't
+# washed out by the rest of the document.
+#
+# Noise floors (second revision, also learned the hard way): feeding raw scores
+# straight into the average made genuine phone photos of real passports read
+# "elevated". Across the saved VerificationResults:
+#   - B-Free reads 0.58-0.60 on real phone photos, 0.95-1.0 on AI-generated
+#     documents, and 0.18-0.36 on locally edited fakes (not what it detects).
+#     Its mid-range is camera/JPEG domain gap, not evidence, so only the part
+#     above 0.5 counts, rescaled to [0,1].
+#   - trufor_localized_score is a concentration ratio, not a probability. Clean
+#     images sit at 0.0-0.30; real localized edits hit 1.0. Only the part above
+#     0.4 counts, rescaled to [0,1].
+#   - The disagreement bonus used max-min over all three stages, but heuristics
+#     is 0.0 on nearly every image, so the "bonus" was really 0.1 * max score
+#     and always pushed upward. Disagreement is now measured between the two
+#     model stages only.
+# Because each stage detects a different thing (local edits vs AI generation vs
+# pasted regions), averaging dilutes a single real signal. Floors keep that
+# signal visible: any stage in its own "medium" band forces at least elevated,
+# a very strong model score forces high, and any confirmed heuristics flag
+# forces at least elevated.
+# These remap points come from only 3 real and 8 fake labeled images. They are
+# starting values read off observed data, not a calibration.
 #
 # If real labeled data becomes available later, replace the body of combine()
 # with a loaded model's .predict_proba() call — nothing else in the pipeline
@@ -51,9 +74,15 @@ WEIGHTS = {
     'heuristics': 0.2,
 }
 
-DISAGREEMENT_WEIGHT = 0.1  # bonus scaled by (max - min) of the available raw
-                            # [0,1] scores — bounded by construction, unlike a
-                            # z-score-based bonus which has no natural ceiling
+DISAGREEMENT_WEIGHT = 0.1  # bonus scaled by |trufor - bfree| effective scores —
+                            # bounded by construction, unlike a z-score-based
+                            # bonus which has no natural ceiling
+
+BFREE_NOISE_FLOOR = 0.5       # synthetic_probability at/below this counts as 0
+LOCALIZED_NOISE_FLOOR = 0.4   # trufor_localized_score at/below this counts as 0
+
+MEDIUM_STAGE_SCORE = 0.33     # any effective stage score >= this -> at least elevated
+STRONG_STAGE_SCORE = 0.85     # any effective model score >= this -> at least high
 
 HIGH_THRESHOLD = 0.55
 ELEVATED_THRESHOLD = 0.30
@@ -61,6 +90,13 @@ ELEVATED_THRESHOLD = 0.30
 # convention on the high end is close to TruFor's own "high" cut, but the
 # elevated/review bar sits below it so a single strong signal or real
 # disagreement still surfaces for human review rather than being averaged away.
+
+
+def _rescale_above(value, floor):
+    """Map [floor, 1] onto [0, 1]; anything at or below floor becomes 0."""
+    if value is None:
+        return None
+    return max(0.0, min(1.0, (value - floor) / (1.0 - floor)))
 
 
 def normalize_heuristics_score(heuristics_result):
@@ -81,8 +117,9 @@ def normalize_heuristics_score(heuristics_result):
 
 
 def combine(trufor_score, bfree_score, heuristics_score):
-    """All three inputs are the stages' own raw [0,1] scores (or None if that
-    stage didn't run)."""
+    """All three inputs are effective [0,1] scores, already noise-floored (or
+    None if that stage didn't run). Returns (final_score, disagreement,
+    floor_applied)."""
     available = {
         'trufor': trufor_score,
         'bfree': bfree_score,
@@ -90,15 +127,26 @@ def combine(trufor_score, bfree_score, heuristics_score):
     }
     available = {k: v for k, v in available.items() if v is not None}
     if not available:
-        return 0.0, 0.0
+        return 0.0, 0.0, None
 
     total_weight = sum(WEIGHTS[k] for k in available)
     weighted_avg = sum(WEIGHTS[k] * v for k, v in available.items()) / total_weight
 
-    disagreement = max(available.values()) - min(available.values())
+    # heuristics is excluded: it is 0.0 on nearly every image, so including it
+    # turned max-min into "highest score" and inflated every result
+    models = [v for k, v in available.items() if k != 'heuristics']
+    disagreement = max(models) - min(models) if len(models) == 2 else 0.0
     final_score = min(1.0, weighted_avg + DISAGREEMENT_WEIGHT * disagreement)
 
-    return final_score, disagreement
+    floor_applied = None
+    if max(available.values()) >= MEDIUM_STAGE_SCORE and final_score < ELEVATED_THRESHOLD:
+        final_score, floor_applied = ELEVATED_THRESHOLD, 'medium_stage_score'
+    if models and max(models) >= STRONG_STAGE_SCORE and final_score < HIGH_THRESHOLD:
+        final_score, floor_applied = HIGH_THRESHOLD, 'strong_model_score'
+    if available.get('heuristics', 0.0) > 0 and final_score < ELEVATED_THRESHOLD:
+        final_score, floor_applied = ELEVATED_THRESHOLD, 'heuristics_flag'
+
+    return final_score, disagreement, floor_applied
 
 
 def bucket(final_score):
@@ -124,13 +172,19 @@ def build_combined_result(image_path, crop_info, trufor_result, bfree_result, he
     # as exactly 0.0 when there's no anomaly at all, same as a genuinely clean
     # image, so taking the max of both costs nothing and only adds coverage)
     trufor_raw = None
+    trufor_eff = None
     if trufor_pooled is not None or trufor_localized is not None:
         trufor_raw = max(trufor_pooled or 0.0, trufor_localized or 0.0)
+        # pooled is TruFor's own calibrated probability and is used as-is; the
+        # localized concentration ratio only counts above its noise floor
+        trufor_eff = max(trufor_pooled or 0.0,
+                         _rescale_above(trufor_localized, LOCALIZED_NOISE_FLOOR) or 0.0)
 
     bfree_raw = bfree_result.get('synthetic_probability') if bfree_result else None
+    bfree_eff = _rescale_above(bfree_raw, BFREE_NOISE_FLOOR)
     heuristics_raw = normalize_heuristics_score(heuristics_result)
 
-    final_score, disagreement = combine(trufor_raw, bfree_raw, heuristics_raw)
+    final_score, disagreement, floor_applied = combine(trufor_eff, bfree_eff, heuristics_raw)
 
     # A crashed detector must never make an image look clean: if a model stage
     # failed, the remaining stages can still raise the verdict, but they can't
@@ -150,22 +204,30 @@ def build_combined_result(image_path, crop_info, trufor_result, bfree_result, he
             'bfree_synthetic_probability': bfree_raw,
             'heuristics': heuristics_raw,
         },
+        'effective_scores': {
+            'trufor': trufor_eff,
+            'bfree': bfree_eff,
+            'heuristics': heuristics_raw,
+        },
         'weights': dict(WEIGHTS),
         'combined_score': final_score,
         'verdict': verdict,
         'failed_stages': failed_stages,
         'disagreement': disagreement,
+        'floor_applied': floor_applied,
         'disclaimer': (
-            'Rule-based weighted combination of each stage\'s own calibrated score '
-            '(TruFor 50%, B-Free 30%, heuristics 20%) plus a small bonus when '
-            'stages disagree — not a trained/calibrated classifier. No labeled '
-            'ground-truth data exists yet to fit or validate one. TruFor is '
-            'weighted highest as the most consistently validated signal in this '
-            'project\'s own testing; weights and thresholds are starting points, '
-            'not a validated calibration. "trufor" is max(trufor_pooled, '
-            'trufor_localized) — the pooled whole-image score and a connected-'
-            'component concentration score that catches small localized edits the '
-            'pooled score alone washes out. Not a passport-authentication decision '
-            '— route elevated/high results to human review.'
+            'Rule-based weighted combination (TruFor 50%, B-Free 30%, heuristics '
+            '20%) of noise-floored stage scores, plus a small bonus when the two '
+            'model stages disagree — not a trained/calibrated classifier. B-Free '
+            f'only counts above {BFREE_NOISE_FLOOR} and TruFor\'s localized score '
+            f'only above {LOCALIZED_NOISE_FLOOR} (both rescaled to [0,1]), since '
+            'real photos routinely score below those. Floors keep a single strong '
+            'stage from being averaged away: any stage in its own medium band '
+            'forces at least elevated, a very strong model score forces high, and '
+            'a confirmed heuristics flag forces at least elevated. Weights, noise '
+            'floors and thresholds are starting points read off a small labeled '
+            'sample (3 real, 8 fake), not a validated calibration. Not a '
+            'passport-authentication decision — route elevated/high results to '
+            'human review.'
         ),
     }

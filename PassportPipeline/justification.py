@@ -23,8 +23,21 @@ def _heuristics_explanation(heuristics_result):
     )
 
 
+_FLOOR_EXPLANATIONS = {
+    'medium_stage_score': ('One stage scored in its own medium-risk band, so the '
+                           'verdict was raised to at least elevated even though '
+                           'the weighted average was lower.'),
+    'strong_model_score': ('One model stage scored very high on its own, so the '
+                           'verdict was raised to high even though the weighted '
+                           'average was lower.'),
+    'heuristics_flag': ('The heuristics stage confirmed a localized flag, so the '
+                        'verdict was raised to at least elevated.'),
+}
+
+
 def build_justification(combined_result, heuristics_result):
     raw = combined_result['stage_scores']
+    eff = combined_result.get('effective_scores', {})
     weights = combined_result['weights']
     crop = combined_result['crop']
 
@@ -34,18 +47,17 @@ def build_justification(combined_result, heuristics_result):
                  f"(inter-stage disagreement: {combined_result['disagreement']:.3f})")
     lines.append('')
     lines.append(
-        'This is a weighted combination of three independent signals — each '
-        'stage\'s OWN raw calibrated score, not re-normalized against a separate '
-        'reference set (an earlier version did that and overfit to one narrow '
-        'image source; fixed by trusting each model\'s own training-time '
-        'calibration instead). TruFor is weighted highest as the most '
-        'consistently validated signal in this project\'s own testing. A small '
-        'bonus is added when stages disagree, so a strong single signal or real '
-        'inter-stage conflict still surfaces for review rather than being '
-        'averaged away — without flagging every image the way a cross-image '
-        'baseline comparison previously did. NOT a trained/calibrated classifier '
-        'and NOT a passport-authentication decision. Route elevated/high results '
-        'to human review.'
+        'This is a weighted combination of three independent signals, each '
+        'judged on its own scale rather than against a separate reference set. '
+        'Scores in the range genuine photos routinely produce (B-Free up to 0.5, '
+        'TruFor localized up to 0.4) are treated as noise and contribute nothing, '
+        'so camera/JPEG artefacts on a real document don\'t push it toward '
+        '"review". TruFor is weighted highest as the most consistently validated '
+        'signal in this project\'s own testing. A small bonus is added when the '
+        'two models disagree, and floors make sure a single strong signal is '
+        'never averaged away. NOT a trained/calibrated classifier and NOT a '
+        'passport-authentication decision. Route elevated/high results to human '
+        'review.'
     )
     lines.append('')
 
@@ -67,8 +79,11 @@ def build_justification(combined_result, heuristics_result):
     lines.append('## Stage 3: B-Free (synthetic/AI-generated image detector)')
     lines.append(f"Weight in combined score: {weights['bfree']:.0%}.")
     if raw['bfree_synthetic_probability'] is not None:
-        lines.append(f"Raw synthetic-probability score: {raw['bfree_synthetic_probability']:.3f} "
-                      f"(the model's own calibrated [0,1] output, not re-normalized).")
+        lines.append(f"Raw synthetic-probability score: {raw['bfree_synthetic_probability']:.3f}; "
+                      f"effective score used: {eff.get('bfree') or 0.0:.3f}.")
+        lines.append('Only the part above 0.5 counts. Genuine phone photos commonly read '
+                      '0.5-0.6 here (camera/JPEG domain gap); AI-generated documents read '
+                      'above 0.9.')
     else:
         lines.append('B-Free stage did not produce a usable result.')
     lines.append('')
@@ -78,7 +93,9 @@ def build_justification(combined_result, heuristics_result):
     if raw['trufor'] is not None:
         pooled = raw.get('trufor_pooled')
         localized = raw.get('trufor_localized')
-        lines.append(f"Effective score used: {raw['trufor']:.3f} = max(pooled, localized).")
+        trufor_eff = eff.get('trufor', raw['trufor'])
+        lines.append(f"Effective score used: {trufor_eff:.3f} = "
+                      f"max(pooled, localized above its 0.4 noise floor).")
         lines.append(
             f"  - Pooled (whole-image) score: {pooled:.3f}" if pooled is not None
             else "  - Pooled (whole-image) score: n/a"
@@ -87,7 +104,7 @@ def build_justification(combined_result, heuristics_result):
             f"  - Localized (connected-component concentration) score: {localized:.3f}" if localized is not None
             else "  - Localized score: n/a"
         )
-        if localized is not None and pooled is not None and localized > pooled + 0.1:
+        if pooled is not None and trufor_eff > pooled + 0.1:
             lines.append(
                 '  This image\'s pooled score understates the risk — the anomaly map '
                 'has a tight, concentrated high-confidence region (not diffuse edge '
@@ -103,19 +120,21 @@ def build_justification(combined_result, heuristics_result):
 
     lines.append('## Which stage drove the verdict')
     risk_by_stage = {
-        'TruFor': raw['trufor'],
-        'B-Free': raw['bfree_synthetic_probability'],
-        'Heuristics': raw['heuristics'],
+        'TruFor': eff.get('trufor'),
+        'B-Free': eff.get('bfree'),
+        'Heuristics': eff.get('heuristics'),
     }
     risk_by_stage = {k: v for k, v in risk_by_stage.items() if v is not None}
     if risk_by_stage:
         top_stage = max(risk_by_stage, key=risk_by_stage.get)
-        lines.append(f"Highest individual raw score: {top_stage} ({risk_by_stage[top_stage]:.3f}).")
+        lines.append(f"Highest individual effective score: {top_stage} ({risk_by_stage[top_stage]:.3f}).")
         if combined_result['disagreement'] > 0.3:
             lines.append(
-                f"Stages disagreed substantially (spread: {combined_result['disagreement']:.3f}) "
-                f"— a bonus was added on top of the weighted average per this pipeline's "
-                f"lean-toward-review-under-disagreement design."
+                f"TruFor and B-Free disagreed substantially (spread: {combined_result['disagreement']:.3f}) "
+                f"— a small bonus was added on top of the weighted average."
             )
+    floor = combined_result.get('floor_applied')
+    if floor:
+        lines.append(_FLOOR_EXPLANATIONS.get(floor, f'Score floor applied: {floor}.'))
 
     return '\n'.join(lines)

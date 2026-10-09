@@ -39,14 +39,16 @@ The forensic result is **additional evidence**: it never blocks the validation f
 
 ### Combined verdict
 
-`combine_scores.py` takes a weighted sum of the raw scores, with no cross-image baseline:
+`combine_scores.py` takes a weighted sum of noise-floored stage scores, with no cross-image baseline:
 
 | Component | Weight |
 |---|---|
-| TruFor | 0.5 |
-| B-Free | 0.3 |
+| TruFor (max of pooled, localized above 0.4 rescaled) | 0.5 |
+| B-Free (only the part above 0.5, rescaled) | 0.3 |
 | Heuristics | 0.2 |
-| Model disagreement bonus | 0.1 |
+| TruFor vs B-Free disagreement bonus | 0.1 |
+
+The noise floors exist because genuine phone photos routinely read 0.5–0.6 on B-Free and up to 0.3 on TruFor's localized score. Floors stop one strong stage being averaged away: any stage ≥ 0.33 forces at least `elevated`, a model stage ≥ 0.85 forces `high`, and a confirmed heuristics flag forces at least `elevated`.
 
 Combined ≥ **0.55** → `high`, ≥ **0.30** → `elevated`, otherwise `low`. If a model stage fails the verdict becomes **"cannot assess — review required"** and is never reported as low. Weights are hand-set because there is no labelled passport dataset to fit a classifier.
 
